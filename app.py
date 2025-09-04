@@ -91,6 +91,15 @@ budget_label = f"€{budget_value}k"
 if budget_value == 100000:
     budget_label = "€100k+"
 
+col_buttons1, col_buttons2 = st.columns(2)
+with col_buttons1:
+    if st.button("Find Matches", use_container_width=True, type="primary"):
+        # ... your existing matching logic ...
+with col_buttons2:
+    if st.button("Reset", use_container_width=True):
+        st.rerun()
+
+
 if st.button("Find Matches", use_container_width=True, type="primary"):
     if not new_brief_text.strip():
         st.warning("Please paste a brief to match.")
