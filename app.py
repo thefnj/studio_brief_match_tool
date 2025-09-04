@@ -23,7 +23,7 @@ except KeyError:
 # --- Load Brief Library from Google Sheet ---
 # Replace with your Google Sheet URL (the CSV export URL)
 # Ensure your sheet headers are: ID, Original Brand, Campaign Title, Target Audience, Key Objective, Core Message, Proposed Media Channels, Budget, Duration, Brand Suitability
-google_sheet_url = "https://docs.google.com/spreadsheets/d/YOUR_SHEET_ID_HERE/gviz/tq?tqx=out:csv&sheet=Sheet1"
+google_sheet_url = "https://docs.google.com/spreadsheets/d/1_edZXof2yV9D8-luPoodNkfahTyzUE1Dbxg5DU35TSM/gviz/tq?tqx=out:csv&sheet=Sheet1"
 
 @st.cache_data(ttl=600)  # Cache data for 10 minutes
 def load_briefs():
