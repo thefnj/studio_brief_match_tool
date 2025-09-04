@@ -82,9 +82,9 @@ with col4:
 
 budget_value = st.slider(
     "Budget (in €):",
-    min_value=1,
-    max_value=1000,
-    value=50,
+    min_value=1000,
+    max_value=100000,
+    value=500,
     step=1,
     help="Move the slider to set a budget. Values are in thousands (e.g., 100 means €100k)."
 )
