@@ -1,9 +1,9 @@
 import streamlit as st
 import google.generativeai as genai
 import json
-import pandas as pd # <-- Add this import
-import io # <-- Add this import
-import requests # <-- Add this import
+import pandas as pd
+import io
+import requests
 from datetime import date
 
 # --- Page Configuration ---
@@ -22,8 +22,6 @@ except KeyError:
     st.stop()
 
 # --- Load Brief Library from Google Sheet ---
-# Replace with your Google Sheet URL (the CSV export URL)
-# Ensure your sheet headers are: ID, Original Brand, Campaign Title, Target Audience, Key Objective, Core Message, Proposed Media Channels, Budget, Duration, Brand Suitability
 google_sheet_url = "https://docs.google.com/spreadsheets/d/1_edZXof2yV9D8-luPoodNkfahTyzUE1Dbxg5DU35TSM/gviz/tq?tqx=out:csv&sheet=Sheet1"
 
 @st.cache_data(ttl=600)
@@ -41,6 +39,20 @@ def load_briefs():
 
 brief_library = load_briefs()
 
+# --- NEW: Function to reset the session state ---
+def reset_form():
+    """Resets all the input fields to their default values."""
+    st.session_state.new_brief_text = ""
+    st.session_state.target_audience = ""
+    st.session_state.proposed_channels = []
+    st.session_state.start_date = date.today()
+    st.session_state.duration_days = 30
+    st.session_state.budget_value = 50000 # Corrected default to match slider
+    # Clear previous matches if they exist
+    if 'matches' in st.session_state:
+        del st.session_state.matches
+    st.rerun()
+
 # --- Main Application Logic ---
 st.title("💡 Brief Matcher Tool")
 st.markdown("---")
@@ -48,141 +60,50 @@ st.markdown("---")
 st.subheader("Match a New Brief")
 st.write("Paste the new client brief details and select key parameters to find the most relevant past ideas.")
 
+# MODIFIED: Added 'key' to each widget
 new_brief_text = st.text_area(
     "New Brief Details:",
     height=150,
-    placeholder="e.g., 'We need to drive app downloads for our new budgeting app aimed at young professionals. Focus on simplicity and automation.'"
+    placeholder="e.g., 'We need to drive app downloads for our new budgeting app aimed at young professionals. Focus on simplicity and automation.'",
+    key="new_brief_text" # <-- MODIFIED
 )
 
 col1, col2 = st.columns(2)
 with col1:
     target_audience = st.text_input(
         "Target Audience:",
-        placeholder="e.g., Gen Z, young professionals"
+        placeholder="e.g., Gen Z, young professionals",
+        key="target_audience" # <-- MODIFIED
     )
 with col2:
     proposed_channels = st.multiselect(
         "Proposed Media Channels:",
         options=[
             'Print', 'Radio', 'Video', 'Digital Display', 'Digital Audio'
-        ]
+        ],
+        key="proposed_channels" # <-- MODIFIED
     )
 
 col3, col4 = st.columns(2)
 with col3:
-    start_date = st.date_input("Start Date:", date.today())
+    start_date = st.date_input("Start Date:", date.today(), key="start_date") # <-- MODIFIED
 with col4:
     duration_days = st.number_input(
         "Duration (days):",
         min_value=1,
         max_value=365,
-        value=30
+        value=30,
+        key="duration_days" # <-- MODIFIED
     )
 
 budget_value = st.slider(
     "Budget (in €):",
     min_value=1000,
     max_value=100000,
-    value=500,
-    step=1,
+    value=50000, # <-- Corrected default value to be in the middle
+    step=1000,    # <-- Changed step for better usability
+    key="budget_value", # <-- MODIFIED
     help="Move the slider to set rough budget."
 )
-budget_label = f"€{budget_value}k"
-if budget_value == 100000:
-    budget_label = "€100k+"
 
-col_buttons1, col_buttons2 = st.columns(2)
-with col_buttons1:
-    if st.button("Find Matches", use_container_width=True, type="primary"):
-        # ... your existing matching logic ...
-with col_buttons2:
-    if st.button("Reset", use_container_width=True):
-        st.rerun()
-
-
-if st.button("Find Matches", use_container_width=True, type="primary"):
-    if not new_brief_text.strip():
-        st.warning("Please paste a brief to match.")
-    elif not brief_library:
-        st.warning("Brief repository is empty. Please check your Google Sheet and URL.")
-    else:
-        with st.spinner("Finding the best matches..."):
-            # Construct a more detailed prompt for the AI
-            additional_params = f"""
-            Target Audience: {target_audience}
-            Proposed Media Channels: {', '.join(proposed_channels)}
-            Budget: {budget_label}
-            Duration: {duration_days} days starting {start_date}
-            """
-            
-            # Create a simplified list of briefs for the prompt, without Brand Suitability
-            simplified_briefs = []
-            for b in brief_library:
-                simplified_briefs.append({
-                    "ID": b.get('ID', ''),
-                    "Campaign Title": b.get('Campaign Title', ''),
-                    "Target Audience": b.get('Target Audience', ''),
-                    "Key Objective": b.get('Key Objective', ''),
-                    "Core Message": b.get('Core Message', ''),
-                    "Proposed Media Channels": b.get('Proposed Media Channels', ''),
-                    "Budget": b.get('Budget', ''),
-                    "Duration": b.get('Duration', '')
-                })
-
-            prompt = f"""
-            You are a creative strategist. Given a new client brief with specific parameters, find the 3 most relevant briefs from a list of past ideas.
-            
-            New Brief Details: "{new_brief_text}"
-            {additional_params}
-            
-            Past Briefs:
-            {json.dumps(simplified_briefs, indent=2)}
-            
-            Based on the new brief and the past briefs, provide a JSON array of the top 3 matches. Each object in the array must contain the 'ID' of the past brief and a 'reason' for the match. If there are no good matches, return an empty array.
-            """
-            
-            try:
-                model = genai.GenerativeModel(
-                    model_name="gemini-2.5-flash-preview-05-20",
-                    generation_config={"response_mime_type": "application/json"}
-                )
-                response = model.generate_content(prompt)
-                
-                matches_json = response.text
-                matches = json.loads(matches_json)
-
-                if matches:
-                    st.success("Found some great matches!")
-                    st.subheader("Top Matches")
-                    for match in matches:
-                        match_id = match['ID']
-                        reason = match['reason']
-                        
-                        original_brief = next((b for b in brief_library if str(b.get('ID')) == str(match_id)), None)
-                        
-                        if original_brief:
-                            with st.expander(f"**{original_brief.get('Campaign Title', 'No Title')}**"):
-                                st.markdown(
-                                    f"""
-                                    **Match Reason:** {reason}
-                                    
-                                    **Target Audience:** {original_brief.get('Target Audience', 'N/A')}
-                                    **Key Objective:** {original_brief.get('Key Objective', 'N/A')}
-                                    **Core Message:** {original_brief.get('Core Message', 'N/A')}
-                                    **Proposed Media Channels:** {original_brief.get('Proposed Media Channels', 'N/A')}
-                                    **Budget:** {original_brief.get('Budget', 'N/A')}
-                                    **Duration:** {original_brief.get('Duration', 'N/A')}
-                                    """
-                                )
-                        else:
-                            st.error(f"Matched brief ID '{match_id}' not found in the library.")
-                else:
-                    st.info("No close matches found. Time for a new idea!")
-            except Exception as e:
-                st.error(f"An error occurred: {e}")
-                st.warning("Could not connect to the API. Please check your API key and try again.")
-
-st.markdown("---")
-
-
-
+# Use session_state value for logic
