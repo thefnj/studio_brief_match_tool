@@ -85,11 +85,11 @@ budget_value = st.slider(
     max_value=100000,
     value=500,
     step=1,
-    help="Move the slider to set a budget. Values are in thousands (e.g., 100 means €100k)."
+    help="Move the slider to set rough budget."
 )
 budget_label = f"€{budget_value}k"
-if budget_value == 1000:
-    budget_label = "€1M+"
+if budget_value == 100000:
+    budget_label = "€100k+"
 
 if st.button("Find Matches", use_container_width=True, type="primary"):
     if not new_brief_text.strip():
