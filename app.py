@@ -54,7 +54,6 @@ new_brief_text = st.text_area(
     placeholder="e.g., 'We need to drive app downloads for our new budgeting app aimed at young professionals. Focus on simplicity and automation.'"
 )
 
-# New input fields for filtering
 col1, col2 = st.columns(2)
 with col1:
     target_audience = st.text_input(
@@ -107,21 +106,19 @@ if st.button("Find Matches", use_container_width=True, type="primary"):
             Duration: {duration_days} days starting {start_date}
             """
             
-            past_briefs_text = "\n\n".join([
-                f"""
-                ID: {b.get('ID', '')}
-                Original Brand: {b.get('Original Brand', '')}
-                Campaign Title: {b.get('Campaign Title', '')}
-                Target Audience: {b.get('Target Audience', '')}
-                Key Objective: {b.get('Key Objective', '')}
-                Core Message: {b.get('Core Message', '')}
-                Proposed Media Channels: {b.get('Proposed Media Channels', '')}
-                Budget: {b.get('Budget', '')}
-                Duration: {b.get('Duration', '')}
-                Brand Suitability: {b.get('Brand Suitability', '')}
-                """
-                for b in brief_library
-            ])
+            # Create a simplified list of briefs for the prompt, without Brand Suitability
+            simplified_briefs = []
+            for b in brief_library:
+                simplified_briefs.append({
+                    "ID": b.get('ID', ''),
+                    "Campaign Title": b.get('Campaign Title', ''),
+                    "Target Audience": b.get('Target Audience', ''),
+                    "Key Objective": b.get('Key Objective', ''),
+                    "Core Message": b.get('Core Message', ''),
+                    "Proposed Media Channels": b.get('Proposed Media Channels', ''),
+                    "Budget": b.get('Budget', ''),
+                    "Duration": b.get('Duration', '')
+                })
 
             prompt = f"""
             You are a creative strategist. Given a new client brief with specific parameters, find the 3 most relevant briefs from a list of past ideas.
@@ -130,7 +127,7 @@ if st.button("Find Matches", use_container_width=True, type="primary"):
             {additional_params}
             
             Past Briefs:
-            {past_briefs_text}
+            {json.dumps(simplified_briefs, indent=2)}
             
             Based on the new brief and the past briefs, provide a JSON array of the top 3 matches. Each object in the array must contain the 'ID' of the past brief and a 'reason' for the match. If there are no good matches, return an empty array.
             """
@@ -160,7 +157,6 @@ if st.button("Find Matches", use_container_width=True, type="primary"):
                                     f"""
                                     **Match Reason:** {reason}
                                     
-                                    **Original Brand:** {original_brief.get('Original Brand', 'N/A')}
                                     **Target Audience:** {original_brief.get('Target Audience', 'N/A')}
                                     **Key Objective:** {original_brief.get('Key Objective', 'N/A')}
                                     **Core Message:** {original_brief.get('Core Message', 'N/A')}
@@ -178,24 +174,6 @@ if st.button("Find Matches", use_container_width=True, type="primary"):
                 st.warning("Could not connect to the API. Please check your API key and try again.")
 
 st.markdown("---")
-
-st.subheader(f"💡 Existing Brief Repository ({len(brief_library)} briefs)")
-st.write("This is your full repository of past briefs.")
-
-for brief in brief_library:
-    with st.expander(f"**{brief.get('Campaign Title', 'No Title')}**"):
-        st.markdown(
-            f"""
-            **Original Brand:** {brief.get('Original Brand', 'N/A')}
-            **Target Audience:** {brief.get('Target Audience', 'N/A')}
-            **Key Objective:** {brief.get('Key Objective', 'N/A')}
-            **Core Message:** {brief.get('Core Message', 'N/A')}
-            **Proposed Media Channels:** {brief.get('Proposed Media Channels', 'N/A')}
-            **Budget:** {brief.get('Budget', 'N/A')}
-            **Duration:** {brief.get('Duration', 'N/A')}
-            """
-        )
-
 
 
 
