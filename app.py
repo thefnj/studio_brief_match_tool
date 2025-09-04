@@ -25,15 +25,13 @@ except KeyError:
 # Ensure your sheet headers are: ID, Original Brand, Campaign Title, Target Audience, Key Objective, Core Message, Proposed Media Channels, Budget, Duration, Brand Suitability
 google_sheet_url = "https://docs.google.com/spreadsheets/d/1_edZXof2yV9D8-luPoodNkfahTyzUE1Dbxg5DU35TSM/gviz/tq?tqx=out:csv&sheet=Sheet1"
 
-@st.cache_data(ttl=600)  # Cache data for 10 minutes
+@st.cache_data(ttl=600)
 def load_briefs():
     try:
         response = requests.get(google_sheet_url)
         response.raise_for_status()
         df = pd.read_csv(io.StringIO(response.text))
-        # Remove any rows with all empty values that might be at the bottom
         df.dropna(how='all', inplace=True)
-        # Convert DataFrame to a list of dictionaries
         briefs = df.to_dict('records')
         return briefs
     except requests.exceptions.RequestException as e:
@@ -47,22 +45,60 @@ st.title("💡 Brief Matcher Tool")
 st.markdown("---")
 
 st.subheader("Match a New Brief")
-st.write("Paste the new client brief details below to find the most relevant past ideas.")
+st.write("Paste the new client brief details and select key parameters to find the most relevant past ideas.")
 
-new_brief = st.text_area(
+# New input fields for filtering
+new_brief_text = st.text_area(
     "New Brief Details:",
     height=150,
     placeholder="e.g., 'We need to drive app downloads for our new budgeting app aimed at young professionals. Focus on simplicity and automation.'"
 )
 
+col1, col2 = st.columns(2)
+with col1:
+    target_audience = st.text_input(
+        "Target Audience:",
+        placeholder="e.g., Gen Z, young professionals"
+    )
+with col2:
+    proposed_channels = st.multiselect(
+        "Proposed Media Channels:",
+        options=[
+            'Social Media', 'Video', 'Programmatic', 'OOH', 'TV', 'Radio', 
+            'Print', 'Email Marketing', 'Influencer Marketing', 'Search'
+        ]
+    )
+
+col3, col4 = st.columns(2)
+with col3:
+    budget = st.selectbox(
+        "Budget:",
+        options=['Any', 'Small', 'Mid-range', 'Large']
+    )
+with col4:
+    duration = st.selectbox(
+        "Duration:",
+        options=['Any', '1-4 weeks', '1-3 months', '3-6 months', '6-12 months']
+    )
+
 if st.button("Find Matches", use_container_width=True, type="primary"):
-    if not new_brief.strip():
+    if not new_brief_text.strip():
         st.warning("Please paste a brief to match.")
     elif not brief_library:
         st.warning("Brief repository is empty. Please check your Google Sheet and URL.")
     else:
         with st.spinner("Finding the best matches..."):
-            # Construct the prompt using all the fields from the sheet for better context
+            # Construct a more detailed prompt for the AI
+            additional_params = ""
+            if target_audience:
+                additional_params += f"Target Audience: {target_audience}\n"
+            if proposed_channels:
+                additional_params += f"Proposed Media Channels: {', '.join(proposed_channels)}\n"
+            if budget:
+                additional_params += f"Budget: {budget}\n"
+            if duration:
+                additional_params += f"Duration: {duration}\n"
+            
             past_briefs_text = "\n\n".join([
                 f"""
                 ID: {b.get('ID', '')}
@@ -80,16 +116,17 @@ if st.button("Find Matches", use_container_width=True, type="primary"):
             ])
 
             prompt = f"""
-            You are a creative strategist. Given a new client brief, find the 3 most relevant briefs from a list of past ideas.
+            You are a creative strategist. Given a new client brief with specific parameters, find the 3 most relevant briefs from a list of past ideas.
             
-            New Brief: "{new_brief}"
+            New Brief Details: "{new_brief_text}"
+            {additional_params}
             
             Past Briefs:
             {past_briefs_text}
             
-            Based on the new brief and the past briefs, provide a JSON array of the top 3 matches. Each object in the array should contain the 'ID' of the past brief and a 'reason' for the match. If there are no good matches, return an empty array.
+            Based on the new brief and the past briefs, provide a JSON array of the top 3 matches. Each object in the array must contain the 'ID' of the past brief and a 'reason' for the match. If there are no good matches, return an empty array.
             """
-
+            
             try:
                 model = genai.GenerativeModel(
                     model_name="gemini-2.5-flash-preview-05-20",
@@ -110,19 +147,20 @@ if st.button("Find Matches", use_container_width=True, type="primary"):
                         original_brief = next((b for b in brief_library if str(b.get('ID')) == str(match_id)), None)
                         
                         if original_brief:
-                            st.expander(f"**{original_brief.get('Campaign Title', 'No Title')}**").markdown(
-                                f"""
-                                **Match Reason:** {reason}
-                                
-                                **Original Brand:** {original_brief.get('Original Brand', 'N/A')}
-                                **Target Audience:** {original_brief.get('Target Audience', 'N/A')}
-                                **Key Objective:** {original_brief.get('Key Objective', 'N/A')}
-                                **Core Message:** {original_brief.get('Core Message', 'N/A')}
-                                **Proposed Media Channels:** {original_brief.get('Proposed Media Channels', 'N/A')}
-                                **Budget:** {original_brief.get('Budget', 'N/A')}
-                                **Duration:** {original_brief.get('Duration', 'N/A')}
-                                """
-                            )
+                            with st.expander(f"**{original_brief.get('Campaign Title', 'No Title')}**"):
+                                st.markdown(
+                                    f"""
+                                    **Match Reason:** {reason}
+                                    
+                                    **Original Brand:** {original_brief.get('Original Brand', 'N/A')}
+                                    **Target Audience:** {original_brief.get('Target Audience', 'N/A')}
+                                    **Key Objective:** {original_brief.get('Key Objective', 'N/A')}
+                                    **Core Message:** {original_brief.get('Core Message', 'N/A')}
+                                    **Proposed Media Channels:** {original_brief.get('Proposed Media Channels', 'N/A')}
+                                    **Budget:** {original_brief.get('Budget', 'N/A')}
+                                    **Duration:** {original_brief.get('Duration', 'N/A')}
+                                    """
+                                )
                         else:
                             st.error(f"Matched brief ID '{match_id}' not found in the library.")
                 else:
@@ -137,17 +175,29 @@ st.subheader(f"💡 Existing Brief Repository ({len(brief_library)} briefs)")
 st.write("This is your full repository of past briefs.")
 
 for brief in brief_library:
-    st.expander(f"**{brief.get('Campaign Title', 'No Title')}**").markdown(
-        f"""
-        **Original Brand:** {brief.get('Original Brand', 'N/A')}
-        **Target Audience:** {brief.get('Target Audience', 'N/A')}
-        **Key Objective:** {brief.get('Key Objective', 'N/A')}
-        **Core Message:** {brief.get('Core Message', 'N/A')}
-        **Proposed Media Channels:** {brief.get('Proposed Media Channels', 'N/A')}
-        **Budget:** {brief.get('Budget', 'N/A')}
-        **Duration:** {brief.get('Duration', 'N/A')}
-        """
-    )
+    with st.expander(f"**{brief.get('Campaign Title', 'No Title')}**"):
+        st.markdown(
+            f"""
+            **Original Brand:** {brief.get('Original Brand', 'N/A')}
+            **Target Audience:** {brief.get('Target Audience', 'N/A')}
+            **Key Objective:** {brief.get('Key Objective', 'N/A')}
+            **Core Message:** {brief.get('Core Message', 'N/A')}
+            **Proposed Media Channels:** {brief.get('Proposed Media Channels', 'N/A')}
+            **Budget:** {brief.get('Budget', 'N/A')}
+            **Duration:** {brief.get('Duration', 'N/A')}
+            """
+        )
 
 
+
+
+
+
+
+
+
+
+
+
+Canvas
 
