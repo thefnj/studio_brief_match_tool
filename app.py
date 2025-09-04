@@ -47,13 +47,13 @@ st.markdown("---")
 st.subheader("Match a New Brief")
 st.write("Paste the new client brief details and select key parameters to find the most relevant past ideas.")
 
-# New input fields for filtering
 new_brief_text = st.text_area(
     "New Brief Details:",
     height=150,
     placeholder="e.g., 'We need to drive app downloads for our new budgeting app aimed at young professionals. Focus on simplicity and automation.'"
 )
 
+# New input fields for filtering
 col1, col2 = st.columns(2)
 with col1:
     target_audience = st.text_input(
@@ -64,22 +64,32 @@ with col2:
     proposed_channels = st.multiselect(
         "Proposed Media Channels:",
         options=[
-            'Social Media', 'Video', 'Programmatic', 'OOH', 'TV', 'Radio', 
-            'Print', 'Email Marketing', 'Influencer Marketing', 'Search'
+            'Print', 'Radio', 'Video', 'Digital Display', 'Digital Audio'
         ]
     )
 
 col3, col4 = st.columns(2)
 with col3:
-    budget = st.selectbox(
-        "Budget:",
-        options=['Any', 'Small', 'Mid-range', 'Large']
-    )
+    start_date = st.date_input("Start Date:", date.today())
 with col4:
-    duration = st.selectbox(
-        "Duration:",
-        options=['Any', '1-4 weeks', '1-3 months', '3-6 months', '6-12 months']
+    duration_days = st.number_input(
+        "Duration (days):",
+        min_value=1,
+        max_value=365,
+        value=30
     )
+
+budget_value = st.slider(
+    "Budget (in €):",
+    min_value=1,
+    max_value=1000,
+    value=50,
+    step=1,
+    help="Move the slider to set a budget. Values are in thousands (e.g., 100 means €100k)."
+)
+budget_label = f"€{budget_value}k"
+if budget_value == 1000:
+    budget_label = "€1M+"
 
 if st.button("Find Matches", use_container_width=True, type="primary"):
     if not new_brief_text.strip():
@@ -89,15 +99,12 @@ if st.button("Find Matches", use_container_width=True, type="primary"):
     else:
         with st.spinner("Finding the best matches..."):
             # Construct a more detailed prompt for the AI
-            additional_params = ""
-            if target_audience:
-                additional_params += f"Target Audience: {target_audience}\n"
-            if proposed_channels:
-                additional_params += f"Proposed Media Channels: {', '.join(proposed_channels)}\n"
-            if budget:
-                additional_params += f"Budget: {budget}\n"
-            if duration:
-                additional_params += f"Duration: {duration}\n"
+            additional_params = f"""
+            Target Audience: {target_audience}
+            Proposed Media Channels: {', '.join(proposed_channels)}
+            Budget: {budget_label}
+            Duration: {duration_days} days starting {start_date}
+            """
             
             past_briefs_text = "\n\n".join([
                 f"""
@@ -190,14 +197,4 @@ for brief in brief_library:
 
 
 
-
-
-
-
-
-
-
-
-
-Canvas
 
