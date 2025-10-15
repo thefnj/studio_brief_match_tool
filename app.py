@@ -178,7 +178,7 @@ with find_col:
                 
                 try:
                     model = genai.GenerativeModel(
-                        model_name="gemini-2.5-flash-latest", # Corrected model name
+                        model_name="gemini-2.5-flash", # Corrected model name
                         generation_config={"response_mime_type": "application/json"}
                     )
                     response = model.generate_content(prompt)
