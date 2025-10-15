@@ -200,7 +200,6 @@ if 'matches' in st.session_state:
         st.success("Found some great matches!")
         st.subheader("Top Matches")
         for match in matches:
-            # Ensure keys exist before accessing
             match_id = match.get('ID')
             reason = match.get('reason', 'No reason provided.')
             
@@ -211,9 +210,10 @@ if 'matches' in st.session_state:
             original_brief = next((b for b in brief_library if str(b.get('ID')) == str(match_id)), None)
             
             if original_brief:
-                with st.expander(f"**{original_brief.get('Campaign Title', 'No Title')}**"):
+                # <-- MODIFIED: Use the generic concept for the title
+                expander_title = original_brief.get('Generic_Campaign_Concept') or original_brief.get('Campaign Title', 'No Title')
+                with st.expander(f"**{expander_title}**"):
                     
-                    # <-- MODIFIED: Add a badge for Case Studies and display key results
                     campaign_type = original_brief.get('Campaign_Type', 'Idea')
                     if campaign_type == 'Case Study':
                         st.info("🚀 **Case Study: Proven Success**")
@@ -222,18 +222,21 @@ if 'matches' in st.session_state:
                     
                     if campaign_type == 'Case Study' and original_brief.get('Key_Results_Summary'):
                         st.markdown("---")
-                        st.markdown(f"**Key Results from this Campaign:**\n\n{original_brief.get('Key_Results_Summary')}")
+                        # <-- MODIFIED: Use markdown for better formatting of results
+                        st.markdown("**Key Results from this Campaign:**")
+                        st.markdown(original_brief.get('Key_Results_Summary'))
                     
                     st.markdown("---")
-                    # Display original brief details for context
+
+                    # <-- MODIFIED: Display the GENERIC details instead of the original ones
                     st.markdown(
                         f"""
-                        **Original Brand:** {original_brief.get('Original Brand', 'N/A')}  
-                        **Target Audience:** {original_brief.get('Target Audience', 'N/A')}  
-                        **Key Objective:** {original_brief.get('Key Objective', 'N/A')}  
-                        **Proposed Media Channels:** {original_brief.get('Proposed Media Channels', 'N/A')}  
-                        **Budget:** {original_brief.get('Budget', 'N/A')}  
-                        **Duration:** {original_brief.get('Duration', 'N/A')}
+                        **Brand Category:** {original_brief.get('Generic_Brand_Category', 'N/A')}  
+                        **Audience Profile:** {original_brief.get('Generic_Audience_Profile', 'N/A')}  
+                        **Key Objective:** {original_brief.get('Generic_Key_Objective', 'N/A')}  
+                        **Media Strategy:** {original_brief.get('Generic_Media_Strategy', 'N/A')}  
+                        **Original Budget:** {original_brief.get('Budget', 'N/A')}  
+                        **Original Duration:** {original_brief.get('Duration', 'N/A')}
                         """
                     )
             else:
