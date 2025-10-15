@@ -137,10 +137,9 @@ with find_col:
                 Duration: {st.session_state.duration_days} days starting {st.session_state.start_date}
                 """
                 
-                # <-- MODIFIED: Create a simplified list of briefs using the NEW generic columns
                 simplified_briefs = []
                 for b in brief_library:
-                    # Use a fallback to original title if generic concept is empty
+                    # MODIFIED: Ensure we're using the new column name
                     concept = b.get('Generic_Campaign_Concept') or b.get('Campaign Title', '')
                     
                     brief_data = {
@@ -152,20 +151,17 @@ with find_col:
                         "Generic_Key_Objective": b.get('Generic_Key_Objective', ''),
                         "Generic_Media_Strategy": b.get('Generic_Media_Strategy', '')
                     }
-                    # Only add results if it's a Case Study and the results exist
                     if brief_data["Campaign_Type"] == 'Case Study' and b.get('Key_Results_Summary'):
                         brief_data["Key_Results_Summary"] = b.get('Key_Results_Summary')
                     
                     simplified_briefs.append(brief_data)
 
-                # <-- MODIFIED: Updated the prompt to be aware of "Ideas" vs "Case Studies"
+                # <-- MODIFIED: A much clearer prompt on HOW to write the reason
                 prompt = f"""
                 You are an expert creative strategist. Your task is to find the 3 most relevant past campaigns from a library, given a new client brief.
                 The library contains two types of campaigns: 'Idea' and 'Case Study'.
-                - 'Idea': A creative concept. Match this based on conceptual similarity (audience, objective, media strategy).
-                - 'Case Study': A campaign that has already run and has proven results. These are highly valuable. If a Case Study is a strong match, your reasoning should highlight how its proven success (from the 'Key_Results_Summary') provides evidence that a similar strategy could work for the new brief.
-
-                Your matching should be based on the GENERIC fields provided (e.g., 'Generic_Campaign_Concept', 'Generic_Audience_Profile'). Do not focus on specific, original brand names from the library.
+                - 'Idea': A creative concept. Match this based on conceptual similarity.
+                - 'Case Study': A campaign with proven results. If a Case Study is a strong match, your reasoning must highlight how its proven success is relevant to the new brief.
 
                 New Brief Details: "{st.session_state.new_brief_text}"
                 {additional_params}
@@ -173,12 +169,19 @@ with find_col:
                 Past Campaigns Library:
                 {json.dumps(simplified_briefs, indent=2)}
                 
-                Based on the new brief, provide a JSON array of the top 3 matches. Each object in the array must contain the 'ID' of the past campaign and a 'reason' for the match. If the match is a 'Case Study', explicitly mention this and incorporate its key results into the reason. If there are no good matches, return an empty array.
+                You must provide a JSON array of the top 3 matches. Each object in the array MUST contain two keys: 'ID' and 'reason'. 
+                It is critical that the 'ID' field is included and is not empty.
+                
+                IMPORTANT: Write the 'reason' in a natural, persuasive tone, as if you were explaining it to a client. 
+                DO NOT mention the internal field names like 'Generic_Brand_Category' or 'Generic_Audience_Profile' in your reasoning. 
+                Instead, just state the facts (e.g., "This concept is a great fit because it targets an affluent, adventurous audience, similar to your target...").
+
+                If there are no good matches, return an empty array.
                 """
                 
                 try:
                     model = genai.GenerativeModel(
-                        model_name="gemini-2.5-flash", # Corrected model name
+                        model_name="gemini-2.5-flash", 
                         generation_config={"response_mime_type": "application/json"}
                     )
                     response = model.generate_content(prompt)
