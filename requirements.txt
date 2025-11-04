@@ -1,2 +1,4 @@
-google-generativeai
 streamlit
+pandas
+requests
+google-generativeai
