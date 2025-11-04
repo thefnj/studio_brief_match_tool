@@ -1,5 +1,5 @@
 import streamlit as st
-import google.generai as genai
+import google.generativeai as genai
 import json
 import pandas as pd
 import io
