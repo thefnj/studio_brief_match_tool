@@ -23,7 +23,7 @@ except KeyError:
 
 # --- CONSTANTS ---
 # ⬇️ PASTE YOUR NEW GOOGLE SHEET URL HERE
-BRIEF_LIBRARY_URL = "YOUR_NEW_IDEAS_DATABASE_GOOGLE_SHEET_URL"
+BRIEF_LIBRARY_URL = "https://docs.google.com/spreadsheets/d/1_edZXof2yV9D8-luPoodNkfahTyzUE1Dbxg5DU35TSM/edit?usp=sharing"
 # We will add the PCA_LIBRARY_URL here later
 
 # --- 1. DATA LOADING FUNCTION ---
