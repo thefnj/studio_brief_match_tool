@@ -94,23 +94,45 @@ def display_results(match_data, ideas_df, components_df):
             col1.write(row['Description'])
             col2.write(f"€{row['Estimated_Budget']}")
 
-# --- MAIN APP ---
+# ... (Imports and load_data functions above) ...
 def main():
-    st.title("Brief Matcher Tool 2.0")
+    st.title("💡 Studio Brief Matcher")
     
-    # Load both
-    ideas_df = load_data("https://docs.google.com/spreadsheets/d/1_edZXof2yV9D8-luPoodNkfahTyzUE1Dbxg5DU35TSM/edit?gid=1655639181#gid=1655639181")
-    components_df = load_data("https://docs.google.com/spreadsheets/d/1_edZXof2yV9D8-luPoodNkfahTyzUE1Dbxg5DU35TSM/edit?gid=571399293#gid=571399293")
-    
-    # ... (Inputs for Brief, Audience, and Budget Slider) ...
-    
-    if st.button("Find Matches"):
-        with st.spinner("Analyzing libraries..."):
-            match_data = find_matches(new_brief_text, "", budget_value, ideas_df, components_df)
-            st.session_state.match_data = match_data
+    # 1. LOAD DATA FIRST (So the dropdowns have something to show)
+    ideas_df = load_live_data(IDEAS_URL)
+    comps_df = load_live_data(COMPONENTS_URL)
 
-    if 'match_data' in st.session_state:
-        display_results(st.session_state.match_data, ideas_df, components_df)
+    # 2. THE INPUT SECTION (Put it right here)
+    st.subheader("Match a New Brief")
+    
+    col_a, col_b = st.columns([2, 1])
+    with col_a:
+        new_brief_text = st.text_area("1. Paste Brief Details:", height=150)
+        
+        # Pulling unique audiences from your spreadsheet
+        if not ideas_df.empty:
+            available_audiences = sorted(ideas_df['Target_audience'].unique().tolist())
+            target_audience = st.multiselect("2. Target Audience(s):", options=available_audiences)
+
+    with col_b:
+        budget_value = st.slider("3. Budget (€):", 5000, 300000, 50000)
+        
+        if not ideas_df.empty:
+            available_sectors = sorted(ideas_df['Original_sector'].unique().tolist())
+            selected_sector = st.selectbox("4. Primary Sector:", ["All Sectors"] + available_sectors)
+
+    # 3. THE TRIGGER (The button that kicks off the logic)
+    if st.button("🚀 Find Best Match", type="primary"):
+        # This code only runs when the button is clicked
+        with st.spinner("Finding matches..."):
+            # Pass your inputs into the matching function
+            params = f"Audience: {target_audience}, Sector: {selected_sector}"
+            match = find_matches(new_brief_text, params, budget_value, ideas_df, comps_df)
+            st.session_state.match = match
+
+    # 4. RESULTS DISPLAY (Shows up after the button is pressed)
+    if 'match' in st.session_state:
+        display_results(st.session_state.match, ideas_df, comps_df)
 
 if __name__ == "__main__":
     main()
