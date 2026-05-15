@@ -33,45 +33,30 @@ def load_live_data(url):
         st.error(f"Sheet Load Error: {e}")
         return pd.DataFrame()
 
-# --- 2. HELPER TO STRIP IDS ---
 def clean_id(text):
-    """Removes 'IDEA-001' or 'COMP-001' style prefixes from strings."""
+    """Removes IDEA-001/COMP-001 prefixes for a cleaner UI."""
     return re.sub(r'^(IDEA|COMP)-\d+\s*:?\s*', '', str(text)).strip()
 
-# --- 3. AI PRODUCER LOGIC ---
-import streamlit as st
-import google.generativeai as genai
-import json
-import pandas as pd
-import io
-import requests
-import re
-
-# ... (Keep Imports, Page Config, and Load Data functions as they were) ...
-
-def clean_id(text):
-    return re.sub(r'^(IDEA|COMP)-\d+\s*:?\s*', '', str(text)).strip()
-
+# --- 2. THE LOGIC ENGINE ---
 def find_matches(brief, profile, total_budget, media_mix, ideas_df, comps_df, model_name):
     ideas_lean = ideas_df[['Idea_ID', 'Generic_idea_title', 'Summary']].to_dict('records')
     comps_lean = comps_df[['Component_ID', 'Parent_Idea_ID', 'Component_type', 'Description', 'Estimated_Budget']].to_dict('records')
 
     prompt = f"""
     You are a Senior Strategic Producer. 
-    
     TOTAL BUDGET: €{total_budget}
-    REQUIRED CHANNELS: {media_mix}
+    REQUIRED MEDIA MIX: {media_mix}
 
     TASK:
-    1. Select the best Idea and the best Creative Components (Parent_Idea_ID) from the library.
-    2. Budget for these production items first.
-    3. Return the JSON.
+    1. Select the best Idea from the IDEAS list.
+    2. Select PRODUCTION COMPONENTS from the COMPONENTS list that fit the budget.
+    3. Ensure components align with the brief objectives.
 
     RETURN JSON:
     {{
         "idea_id": "ID",
         "reason": "Strategy summary...",
-        "selected_components": ["COMP-001"],
+        "selected_components": ["COMP-001", "COMP-002"],
         "production_total": 45000
     }}
     
@@ -85,81 +70,129 @@ def find_matches(brief, profile, total_budget, media_mix, ideas_df, comps_df, mo
         clean_text = response.text.replace("```json", "").replace("```", "").strip()
         result = json.loads(clean_text)
         
-        # --- SMART MEDIA SPEND LOGIC ---
-        production_items = comps_df[comps_df['Component_ID'].isin(result['selected_components'])]
-        # Identify which channels are ALREADY covered by production
-        covered_channels = [str(c).lower() for c in production_items['Component_type'].unique()]
+        # --- SMART DEDUPLICATION LOGIC ---
+        # Get the actual data for the components the AI picked
+        prod_data = comps_df[comps_df['Component_ID'].isin(result['selected_components'])]
         
-        working_media_items = []
+        # We check which channels are already "Produced"
+        # We look at the Component_type and the Description for keywords
+        produced_channels = []
+        for _, row in prod_data.iterrows():
+            comp_info = (row['Component_type'] + " " + row['Description']).lower()
+            produced_channels.append(comp_info)
+
+        media_gap_items = []
         media_total = 0
         
-        # Professional naming map
-        media_descriptors = {
-            "Digital": "High-impact Digital Display & Programmatic Media Buy",
-            "Social": "Targeted Social Media Amplification & Paid Seeding",
-            "Radio": "Premium Spot Placement & Digital Audio Inventory",
-            "Print": "National Press Placements & Niche Editorial Media Buy",
-            "Video": "VOD & YouTube TrueView Ad Sequencing",
-            "Events": "Experiential Media Support & Local Promotion"
+        # Professional Sales Terms for Gaps
+        media_map = {
+            "Digital": ("High-impact Digital Display & Programmatic", "Reach targeted audiences across premium web inventory."),
+            "Social": ("Targeted Social Media Amplification", "Paid seeding and boosted story placements to drive engagement."),
+            "Radio": ("Premium Audio Spot Placement", "High-frequency spot rotation across digital and terrestrial audio."),
+            "Print": ("National Press & Editorial Buy", "Full-page placements and contextually relevant advertorials."),
+            "Video": ("VOD & YouTube TrueView Ad Spend", "Strategic video sequencing to maximize completion rates."),
+            "Events": ("Experiential Promotion & Local Media", "Localized ad support to drive footfall to the physical activation.")
         }
 
         for channel in media_mix:
-            # Check if this channel is already in the production components
-            is_covered = any(channel.lower() in c for c in covered_channels)
+            # If the channel isn't mentioned in the production components, add it as media spend
+            already_covered = any(channel.lower() in info for info in produced_channels)
             
-            if not is_covered:
-                spend = int(total_budget * 0.10)
+            if not already_covered:
+                spend = int(total_budget * 0.10) # Default 10% for the gap
                 media_total += spend
-                working_media_items.append({
-                    "type": channel,
-                    "title": media_descriptors.get(channel, f"{channel} Working Media"),
-                    "desc": f"Direct media investment to drive reach and frequency for the campaign across {channel} platforms.",
-                    "cost": spend
-                })
+                title, desc = media_map.get(channel, (f"{channel} Media", "Standard media investment."))
+                media_gap_items.append({"title": title, "desc": desc, "cost": spend})
 
-        result['working_media'] = working_media_items
-        result['final_total'] = result['production_total'] + media_total
+        result['media_gaps'] = media_gap_items
+        result['final_proposal_total'] = result['production_total'] + media_total
         return result
     except Exception as e:
         st.error(f"Logic Error: {e}")
         return None
 
-# --- UI DISPLAY SECTION (Inside main) ---
+# --- 3. THE UI ---
 def main():
-    # ... (Keep Input Section same as before) ...
+    st.title("💡 Studio Brief Matcher")
+    
+    ideas_df = load_live_data(IDEAS_URL)
+    comps_df = load_live_data(COMPONENTS_URL)
 
-    # --- RESULTS ---
+    with st.sidebar:
+        st.header("⚙️ Settings")
+        try:
+            all_models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
+            def_idx = next((i for i, m in enumerate(all_models) if "flash" in m), 0)
+            selected_model = st.selectbox("Active AI Model:", all_models, index=def_idx)
+        except:
+            selected_model = "models/gemini-1.5-flash"
+
+    # --- INPUTS ---
+    st.markdown("#### 📝 1. The Brief")
+    with st.container(border=True):
+        new_brief_text = st.text_area("What is the client looking for?", height=100, label_visibility="collapsed")
+
+    col_left, col_right = st.columns(2)
+    with col_left:
+        with st.container(border=True):
+            st.markdown("#### 👥 2. Target Audience")
+            gender = st.radio("Gender Focus:", ["Both", "Male", "Female"], horizontal=True)
+            age_opts = ["18-24", "25-34", "35-44", "45-54", "55-64", "65+"]
+            age_ranges = st.multiselect("Age Ranges:", age_opts, default=age_opts)
+
+    with col_right:
+        with st.container(border=True):
+            st.markdown("#### 📊 3. Budget & Media Mix")
+            budget_val = st.slider("Total Budget (€):", 5000, 300000, 100000, step=5000, format="€%d")
+            chan_opts = ["Print", "Digital", "Radio", "Events", "Video", "Social"]
+            media_mix = st.multiselect("Primary Channels:", chan_opts, default=chan_opts)
+            duration = st.number_input("Campaign Duration (Days):", 1, 365, 30)
+
+    # --- ACTION ---
+    if st.button("🚀 GENERATE PROPOSAL", type="primary", use_container_width=True):
+        if not new_brief_text:
+            st.warning("Please provide brief details.")
+        else:
+            with st.spinner("Producer is calculating proposal..."):
+                profile = f"Audience: {gender}, {age_ranges}. Mix: {media_mix}."
+                res = find_matches(new_brief_text, profile, budget_val, media_mix, ideas_df, comps_df, selected_model)
+                st.session_state.match_result = res
+
+    # --- RESULTS DISPLAY ---
     if 'match_result' in st.session_state and st.session_state.match_result:
         res = st.session_state.match_result
-        idea = ideas_df[ideas_df['Idea_ID'] == res['idea_id']].iloc[0]
         
-        st.header(f"Strategy: {clean_id(idea['Generic_idea_title'])}")
-        st.info(res['reason'])
-        
-        st.subheader("📋 Creative Proposal")
-        
-        # 1. Show Production Components from DB
-        selected_comps = comps_df[comps_df['Component_ID'].isin(res['selected_components'])]
-        for _, c in selected_comps.iterrows():
-            with st.container(border=True):
-                c1, c2 = st.columns([4, 1])
-                c1.markdown(f"**{clean_id(c['Component_type'])}**")
-                c1.write(c['Description'])
-                c2.markdown(f"### €{c['Estimated_Budget']:,}")
+        # Robust lookup of the Idea
+        idea_match = ideas_df[ideas_df['Idea_ID'] == res['idea_id']]
+        if not idea_match.empty:
+            idea = idea_match.iloc[0]
+            st.header(f"Strategy: {clean_id(idea['Generic_idea_title'])}")
+            st.info(res['reason'])
+            
+            st.subheader("📋 Creative Proposal")
+            
+            # 1. Show the Production Components the AI picked
+            selected_comps = comps_df[comps_df['Component_ID'].isin(res['selected_components'])]
+            for _, c in selected_comps.iterrows():
+                with st.container(border=True):
+                    c1, c2 = st.columns([4, 1])
+                    c1.markdown(f"**{clean_id(c['Component_type'])}**")
+                    c1.write(c['Description'])
+                    c2.markdown(f"### €{c['Estimated_Budget']:,}")
 
-        # 2. Show the "Gap-filling" Working Media
-        for m in res['working_media']:
-            with st.container(border=True):
-                c1, c2 = st.columns([4, 1])
-                # Show professional sales term as the title
-                c1.markdown(f"**{m['title']}**")
-                c1.write(m['desc'])
-                c2.markdown(f"### €{m['cost']:,}")
-        
-        st.divider()
-        col1, col2 = st.columns(2)
-        col1.metric("Total Proposal Value", f"€{res['final_total']:,}", delta=f"€{budget_val - res['final_total']:,} remaining")
-        col2.write("Includes all creative production, licensing, and strategic media allocation as detailed above.")
+            # 2. Show the "Working Media" Gap-fillers
+            for m in res['media_gaps']:
+                with st.container(border=True):
+                    c1, c2 = st.columns([4, 1])
+                    c1.markdown(f"**{m['title']}**")
+                    c1.write(m['desc'])
+                    c2.markdown(f"### €{m['cost']:,}")
+            
+            st.divider()
+            st.metric("Total Proposal Value", f"€{res['final_proposal_total']:,}", 
+                      delta=f"€{budget_val - res['final_proposal_total']:,} remaining")
+        else:
+            st.error("AI matched an ID not in the database. Please try again.")
 
 if __name__ == "__main__":
     main()
