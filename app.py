@@ -40,6 +40,7 @@ def clean_label(text):
 
 # --- 3. AI PRODUCER & BUDGETING LOGIC ---
 def find_matches(brief, profile, total_budget, media_mix, ideas_df, comps_df, model_name):
+    # Prepare data for AI
     ideas_lean = ideas_df[['Idea_ID', 'Generic_idea_title', 'Summary']].to_dict('records')
     comps_lean = comps_df[['Component_ID', 'Parent_Idea_ID', 'Component_type', 'Description', 'Estimated_Budget']].to_dict('records')
 
@@ -50,13 +51,13 @@ def find_matches(brief, profile, total_budget, media_mix, ideas_df, comps_df, mo
 
     TASK:
     1. Select the best Idea from the IDEAS list.
-    2. Select the best PRODUCTION COMPONENTS from the list (linked by Parent_Idea_ID).
-    3. You must leave at least 20% of the budget free for media spend.
+    2. Select PRODUCTION COMPONENTS from the list (linked by Parent_Idea_ID).
+    3. Ensure production total is strictly below €{total_budget}.
     
     RETURN ONLY JSON:
     {{
         "idea_id": "ID",
-        "reason": "Strategy summary...",
+        "reason": "Explain the strategy...",
         "selected_components": ["COMP-001", "COMP-002"]
     }}
     
@@ -70,11 +71,11 @@ def find_matches(brief, profile, total_budget, media_mix, ideas_df, comps_df, mo
         clean_text = response.text.replace("```json", "").replace("```", "").strip()
         result = json.loads(clean_text)
         
-        # --- ZERO-WASTE BUDGET SPLIT ---
+        # --- ZERO-WASTE BUDGET SPLIT (Python Math) ---
         prod_data = comps_df[comps_df['Component_ID'].isin(result['selected_components'])]
         production_total = prod_data['Estimated_Budget'].sum()
         
-        # Identify Gaps (Channels selected in UI that aren't in the production list)
+        # Identify Gaps (Channels selected in UI not covered by production components)
         produced_types = [str(t).lower() for t in prod_data['Component_type'].unique()]
         media_gaps = [c for c in media_mix if not any(c.lower() in t for t in produced_types)]
         
@@ -82,25 +83,20 @@ def find_matches(brief, profile, total_budget, media_mix, ideas_df, comps_df, mo
         media_items = []
 
         if media_gaps and remaining_budget > 0:
-            # Divide the spare cash equally across the gaps
             spend_per_gap = int(remaining_budget / len(media_gaps))
             
             media_map = {
-                "Digital": ("High-impact Digital Display & Programmatic", "Reach targeted audiences across premium web inventory."),
-                "Social": ("Targeted Social Media Amplification", "Paid seeding and boosted placements to drive engagement."),
+                "Digital": ("High-impact Digital Display & Programmatic", "Reach targeted audiences across premium programmatic web inventory."),
+                "Social": ("Targeted Social Media Amplification", "Paid seeding and boosted story placements to drive engagement."),
                 "Radio": ("Premium Audio Spot Placement", "High-frequency spot rotation across digital and terrestrial audio."),
                 "Print": ("National Press & Editorial Buy", "Full-page placements and contextually relevant advertorials."),
                 "Video": ("VOD & YouTube TrueView Ad Spend", "Strategic video sequencing to maximize completion rates."),
-                "Events": ("Experiential Promotion & Local Media", "Localized ad support to drive footfall to the physical activation.")
+                "Events": ("Experiential Promotion & Local Media Support", "Localized ad support to drive footfall to the physical activation.")
             }
 
             for channel in media_gaps:
                 title, desc = media_map.get(channel, (f"{channel} Media Placement", "Standard media investment."))
-                media_items.append({
-                    "title": title,
-                    "desc": desc,
-                    "cost": spend_per_gap
-                })
+                media_items.append({"title": title, "desc": desc, "cost": spend_per_gap})
         
         result['production_items_data'] = prod_data.to_dict('records')
         result['media_items_data'] = media_items
@@ -132,7 +128,7 @@ def main():
             st.rerun()
 
     if ideas_df.empty or comps_df.empty:
-        st.error("Database connection failed. Check Sheet 'Publish to Web' settings.")
+        st.error("Database failed to load. Check Sheet settings.")
         return
 
     # --- INPUT CARDS ---
@@ -144,7 +140,7 @@ def main():
     with col_left:
         with st.container(border=True):
             st.markdown("#### 👥 2. Target Audience")
-            gender = st.radio("Gender:", ["Both", "Male", "Female"], horizontal=True)
+            gender = st.radio("Gender Focus:", ["Both", "Male", "Female"], horizontal=True)
             age_options = ["18-24", "25-34", "35-44", "45-54", "55-64", "65+"]
             age_ranges = st.multiselect("Age Ranges:", age_options, default=age_options)
 
@@ -152,8 +148,6 @@ def main():
         with st.container(border=True):
             st.markdown("#### 📊 3. Budget & Media Mix")
             budget_val = st.slider("Total Budget (€):", 5000, 300000, 100000, step=5000, format="€%d")
-            
-            # FIXED: Corrected chan_options / chan_opts typo here
             chan_options = ["Print", "Digital", "Radio", "Events", "Video", "Social"]
             media_mix = st.multiselect("Primary Channels:", chan_options, default=chan_options)
             duration = st.number_input("Campaign Duration (Days):", 1, 365, 30)
@@ -163,7 +157,7 @@ def main():
         if not new_brief_text:
             st.warning("Please provide brief details.")
         else:
-            with st.spinner("Optimizing creative and media spend..."):
+            with st.spinner("Optimizing budget split..."):
                 profile = f"Audience: {gender}, {age_ranges}. Mix: {media_mix}."
                 res = find_matches(new_brief_text, profile, budget_val, media_mix, ideas_df, comps_df, selected_model)
                 st.session_state.match_result = res
@@ -180,7 +174,7 @@ def main():
             
             st.subheader("📋 Creative Proposal")
             
-            # Show Production Items
+            # Show Creative Production Line Items
             for item in res['production_items_data']:
                 with st.container(border=True):
                     c1, c2 = st.columns([4, 1])
@@ -188,7 +182,7 @@ def main():
                     c1.write(item['Description'])
                     c2.markdown(f"### €{item['Estimated_Budget']:,}")
 
-            # Show Media Gap Items (Topped up with spare budget)
+            # Show Media Placement Line Items (Zero-Waste Spends)
             for m in res['media_items_data']:
                 with st.container(border=True):
                     c1, c2 = st.columns([4, 1])
@@ -196,4 +190,11 @@ def main():
                     c1.write(m['desc'])
                     c2.markdown(f"### €{m['cost']:,}")
             
-            st.
+            st.divider()
+            st.metric("Total Proposal Value", f"€{res['grand_total']:,}", 
+                      delta="Budget fully utilized" if res['grand_total'] >= budget_val else f"€{budget_val - res['grand_total']:,} remaining")
+        else:
+            st.error("AI matched an ID not in the database.")
+
+if __name__ == "__main__":
+    main()
