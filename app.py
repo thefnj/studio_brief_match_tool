@@ -104,7 +104,7 @@ def main():
         st.error("Database connection failed. Please check Google Sheet 'Publish to Web' settings.")
         return
 
-    # --- INPUT CARDS ---
+# --- UPDATED INPUT CARDS ---
     st.markdown("#### 📝 1. The Brief")
     with st.container(border=True):
         new_brief_text = st.text_area("What is the client looking for?", height=100, label_visibility="collapsed")
@@ -114,24 +114,40 @@ def main():
         with st.container(border=True):
             st.markdown("#### 👥 2. Target Audience")
             gender = st.radio("Gender Focus:", ["Both", "Male", "Female"], horizontal=True)
-            age_ranges = st.multiselect("Age Ranges:", ["18-24", "25-34", "35-44", "45-54", "55-64", "65+"])
-            social_status = st.multiselect("Status:", ["Students", "Young Professionals", "Parents", "Executives", "Retirees"])
+            
+            # AGE RANGES: Pre-populated so you can 'X' them off
+            age_options = ["18-24", "25-34", "35-44", "45-54", "55-64", "65+"]
+            age_ranges = st.multiselect(
+                "Age Ranges:", 
+                options=age_options, 
+                default=age_options # All selected by default
+            )
 
     with col_right:
         with st.container(border=True):
             st.markdown("#### 📊 3. Budget & Media Mix")
-            budget_val = st.slider("Max Budget (€):", 5000, 300000, 50000, step=5000, format="€%d")
-            media_mix = st.multiselect("Primary Channels:", ["Print", "Digital", "Radio", "Events", "Video", "Social"], default=["Digital"])
+            # Budget set to 100k default
+            budget_val = st.slider("Max Budget (€):", 5000, 300000, 100000, step=5000, format="€%d")
+            
+            # PRIMARY CHANNELS: Pre-populated so you can 'X' them off
+            channel_options = ["Print", "Digital", "Radio", "Events", "Video", "Social"]
+            media_mix = st.multiselect(
+                "Primary Channels:", 
+                options=channel_options, 
+                default=channel_options # All selected by default
+            )
+            
             duration = st.number_input("Campaign Duration (Days):", 1, 365, 30)
 
-    # --- EXECUTION ---
+    # --- UPDATED EXECUTION LOGIC (Removed Social Status) ---
     st.markdown("---")
     if st.button("🚀 GENERATE MATCHED PROPOSAL", type="primary", use_container_width=True):
         if not new_brief_text:
             st.warning("Please provide a brief description.")
         else:
             with st.spinner(f"AI Producer ({selected_model}) is thinking..."):
-                profile_summary = f"Gender: {gender}, Ages: {age_ranges}, Status: {social_status}, Mix: {media_mix}, Days: {duration}"
+                # Updated profile_summary string (no more status)
+                profile_summary = f"Gender: {gender}, Ages: {age_ranges}, Mix: {media_mix}, Days: {duration}"
                 result = find_matches(new_brief_text, profile_summary, budget_val, ideas_df, comps_df, selected_model)
                 st.session_state.match_result = result
 
