@@ -36,37 +36,49 @@ def load_live_data(url):
 
 # --- 3. AI PRODUCER LOGIC ---
 def find_matches(brief, profile, budget, ideas_df, comps_df):
-    # Simplify data for the AI to process efficiently
-    ideas_lean = ideas_df[['Idea_ID', 'Generic_idea_title', 'Summary', 'Channels', 'Target_audience']].to_dict('records')
-    comps_lean = comps_df[['Component_ID', 'Parent_Idea_ID', 'Component_type', 'Description', 'Estimated_Budget']].to_dict('records')
+    # 1. DISCOVER MODELS: Let the code find what is available for YOUR key
+    try:
+        available_models = [m.name for m in genai.list_models()]
+        
+        # Priority list: Best to oldest
+        if any("gemini-1.5-flash" in m for m in available_models):
+            target_model = "models/gemini-1.5-flash"
+        elif any("gemini-1.5-pro" in m for m in available_models):
+            target_model = "models/gemini-1.5-pro"
+        else:
+            target_model = "models/gemini-pro" # The universal fallback
+            
+    except Exception as e:
+        st.error(f"Discovery failed: {e}")
+        target_model = "models/gemini-pro"
 
-    prompt = f"""
-    You are an expert Creative Producer.
+    # 2. PREPARE THE DATA
+    ideas_lean = ideas_df[['Idea_ID', 'Generic_idea_title', 'Summary']].to_dict('records')
     
-    USER BRIEF: {brief}
-    TARGET PROFILE: {profile}
-    MAX BUDGET: €{budget}
-
-    TASK:
-    1. Find the best conceptual match from IDEAS.
-    2. Select individual COMPONENTS linked to that Idea (Parent_Idea_ID) that fit the budget.
-    3. Prioritize components that align with the requested Media Mix.
-
+    prompt = f"""
+    Find the best idea from this list for this brief: {brief}.
+    Budget: €{budget}. Profile: {profile}.
+    
+    RETURN ONLY JSON with keys: "idea_id", "reason", "selected_components", "total_cost".
+    
     IDEAS: {json.dumps(ideas_lean)}
-    COMPONENTS: {json.dumps(comps_lean)}
-
-    RETURN ONLY JSON:
-    {{
-        "idea_id": "ID",
-        "reason": "Why this works for the audience & budget...",
-        "selected_components": ["COMP-001", "COMP-002"],
-        "total_cost": 45000
-    }}
     """
-    model = genai.GenerativeModel("models/gemini-1.5-flash-latest")
-    response = model.generate_content(prompt, generation_config={"response_mime_type": "application/json"})
-    return json.loads(response.text)
-
+    
+    # 3. CALL THE MODEL (Safe for 1.0 and 1.5)
+    model = genai.GenerativeModel(target_model)
+    
+    # We remove 'response_mime_type' here because gemini-pro (1.0) doesn't support it
+    # We will handle the JSON cleaning manually to be safe
+    response = model.generate_content(prompt)
+    
+    try:
+        # Clean the text in case the AI wraps it in markdown like ```json
+        clean_text = response.text.replace("```json", "").replace("```", "").strip()
+        return json.loads(clean_text)
+    except Exception as e:
+        st.error(f"Parsing failed. AI returned: {response.text}")
+        return None
+        
 # --- 4. MAIN UI ---
 def main():
     st.title("💡 Studio Brief Matcher")
