@@ -6,133 +6,140 @@ import io
 import requests
 from datetime import date
 
-# ... (Page Config and API Setup remain the same) ...
+# --- Page Configuration ---
+st.set_page_config(page_title="Brief Matcher 2.0", page_icon="💡", layout="wide")
+
+# --- API Setup ---
+try:
+    genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
+except KeyError:
+    st.error("Gemini API key not found. Please add it to Streamlit Secrets.")
+    st.stop()
+
+# --- CONSTANTS (Corrected Export Links) ---
+# Note: I've updated these to the /export?format=csv format
+IDEAS_URL = "https://docs.google.com/spreadsheets/d/1_edZXof2yV9D8-luPoodNkfahTyzUE1Dbxg5DU35TSM/export?format=csv&gid=1152061214"
+COMPONENTS_URL = "https://docs.google.com/spreadsheets/d/1_edZXof2yV9D8-luPoodNkfahTyzUE1Dbxg5DU35TSM/export?format=csv&gid=517409226"
 
 # --- 1. DATA LOADING FUNCTION ---
 @st.cache_data(ttl=600)
-def load_data(url):
+def load_live_data(url):
+    """Fetches Google Sheet data and cleans budget columns."""
     try:
         response = requests.get(url)
         response.raise_for_status()
-        
-        # 1. Use 'keep_default_na=False' to prevent Pandas from guessing types too early
         df = pd.read_csv(io.StringIO(response.text), keep_default_na=False)
         
-        # 2. Clean Budget Columns (Common culprit for this error)
-        # We look for columns with 'Budget' or 'Cost' in the name
+        # Clean Budget Columns (Removes €, commas, and whitespace)
         for col in df.columns:
             if 'Budget' in col or 'Cost' in col:
-                # Remove currency symbols, commas, and whitespace
                 df[col] = df[col].astype(str).str.replace(r'[€, ]', '', regex=True)
-                # Convert to numeric, turning errors (like blanks) into 0
                 df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
-        
         return df
     except Exception as e:
         st.error(f"Error loading data: {e}")
         return pd.DataFrame()
 
-# --- 2. API & MATCHING LOGIC ---
-def find_matches(new_brief, params, user_budget, ideas_df, components_df):
-    # Prepare the data for Gemini
-    # We only send relevant columns to save tokens
-    ideas_list = ideas_df[['Idea_ID', 'Generic_idea_title', 'Summary', 'Budget_band']].to_dict('records')
-    
-    # We send ALL components, or we could filter them in the prompt logic
-    components_list = components_df[['Component_ID', 'Parent_Idea_ID', 'Component_type', 'Description', 'Estimated_Budget']].to_dict('records')
+# --- 2. MATCHING LOGIC ---
+def find_matches(new_brief, params, user_budget, ideas_df, comps_df):
+    """Sends prompt to Gemini and returns JSON match data."""
+    ideas_json = ideas_df[['Idea_ID', 'Generic_idea_title', 'Summary', 'Budget_band', 'Target_audience', 'Original_sector']].to_dict('records')
+    comps_json = comps_df[['Component_ID', 'Parent_Idea_ID', 'Component_type', 'Description', 'Estimated_Budget']].to_dict('records')
 
     prompt = f"""
     You are a Strategic Producer. 
-    TASK: 
-    1. Match the client brief to the best CONCEPT from the Ideas Library.
-    2. From that specific Idea, select a combination of COMPONENTS that fit within the Client Budget.
-    
-    CLIENT BRIEF: {new_brief}
-    TARGET BUDGET: €{user_budget}
-    
-    IDEAS LIBRARY:
-    {json.dumps(ideas_list)}
-    
-    COMPONENTS LIBRARY (linked by Parent_Idea_ID):
-    {json.dumps(components_list)}
-    
-    RULES:
-    - Only select components that belong to the matched Idea.
-    - The sum of 'Estimated_Budget' for selected components MUST NOT exceed €{user_budget}.
-    - Priority: Include 'Core' or 'High Impact' components first.
-    
-    RETURN JSON ONLY:
+    1. Match the brief to the best CONCEPT from the IDEAS list.
+    2. Build a custom package using COMPONENTS linked to that Idea (via Parent_Idea_ID).
+    3. Ensure the total 'Estimated_Budget' is under €{user_budget}.
+
+    NEW BRIEF: {new_brief}
+    USER FILTERS: {params}
+    CLIENT BUDGET: €{user_budget}
+
+    IDEAS LIBRARY: {json.dumps(ideas_json)}
+    COMPONENTS LIBRARY: {json.dumps(comps_json)}
+
+    RETURN ONLY JSON:
     {{
-        "matched_idea_id": "IDEA-001",
-        "reasoning": "...",
+        "matched_idea_id": "ID here",
+        "reasoning": "Brief explanation of why this fits the budget and brief...",
         "selected_component_ids": ["COMP-001", "COMP-002"],
-        "total_estimated_cost": 45000
+        "total_cost": 45000
     }}
     """
+    try:
+        model = genai.GenerativeModel("gemini-1.5-flash")
+        res = model.generate_content(prompt, generation_config={"response_mime_type": "application/json"})
+        return json.loads(res.text)
+    except Exception as e:
+        st.error(f"AI Error: {e}")
+        return None
 
-    model = genai.GenerativeModel("gemini-1.5-flash") # Using 1.5 for faster hackathon response
-    response = model.generate_content(prompt, generation_config={"response_mime_type": "application/json"})
-    return json.loads(response.text)
-
-# --- 3. DISPLAY RESULTS ---
-def display_results(match_data, ideas_df, components_df):
-    idea = ideas_df[ideas_df['Idea_ID'] == match_data['matched_idea_id']].iloc[0]
-    
-    st.subheader(f"💡 Recommended Idea: {idea['Generic_idea_title']}")
-    st.info(match_data['reasoning'])
-    
-    st.write("### 🛠️ Custom Component Build-out")
-    st.write(f"**Total Estimated Budget:** €{match_data['total_estimated_cost']:,}")
-    
-    # Display only the selected components
-    selected_comps = components_df[components_df['Component_ID'].isin(match_data['selected_component_ids'])]
-    
-    for _, row in selected_comps.iterrows():
-        with st.container(border=True):
-            col1, col2 = st.columns([4, 1])
-            col1.markdown(f"**{row['Component_type']}**")
-            col1.write(row['Description'])
-            col2.write(f"€{row['Estimated_Budget']}")
-
-# ... (Imports and load_data functions above) ...
+# --- 3. MAIN APPLICATION ---
 def main():
     st.title("💡 Studio Brief Matcher")
+    st.markdown("---")
     
-    # 1. LOAD DATA FIRST (So the dropdowns have something to show)
-    ideas_df = load_live_data("https://docs.google.com/spreadsheets/d/1_edZXof2yV9D8-luPoodNkfahTyzUE1Dbxg5DU35TSM/edit?gid=1655639181#gid=1655639181")
-    comps_df = load_live_data("https://docs.google.com/spreadsheets/d/1_edZXof2yV9D8-luPoodNkfahTyzUE1Dbxg5DU35TSM/edit?gid=571399293#gid=571399293")
+    # LOAD DATA
+    ideas_df = load_live_data(IDEAS_URL)
+    comps_df = load_live_data(COMPONENTS_URL)
 
-    # 2. THE INPUT SECTION (Put it right here)
-    st.subheader("Match a New Brief")
-    
+    if ideas_df.empty or comps_df.empty:
+        st.warning("Could not load data from Google Sheets. Check your URLs and 'Publish to Web' settings.")
+        return
+
+    # --- INPUT SECTION ---
+    st.subheader("1. Campaign Details")
     col_a, col_b = st.columns([2, 1])
+    
     with col_a:
-        new_brief_text = st.text_area("1. Paste Brief Details:", height=150)
+        new_brief_text = st.text_area("Paste Brief Details:", height=150, placeholder="Describe the goal...")
         
-        # Pulling unique audiences from your spreadsheet
-        if not ideas_df.empty:
-            available_audiences = sorted(ideas_df['Target_audience'].unique().tolist())
-            target_audience = st.multiselect("2. Target Audience(s):", options=available_audiences)
+        # Dynamic Multi-select for Audiences
+        available_audiences = sorted(ideas_df['Target_audience'].unique().tolist())
+        target_audience = st.multiselect("Select Target Audience(s):", options=available_audiences)
 
     with col_b:
-        budget_value = st.slider("3. Budget (€):", 5000, 300000, 50000)
+        budget_value = st.slider("Target Budget (€):", 5000, 300000, 50000, step=5000)
         
-        if not ideas_df.empty:
-            available_sectors = sorted(ideas_df['Original_sector'].unique().tolist())
-            selected_sector = st.selectbox("4. Primary Sector:", ["All Sectors"] + available_sectors)
+        available_sectors = sorted(ideas_df['Original_sector'].unique().tolist())
+        selected_sector = st.selectbox("Primary Sector:", ["All Sectors"] + available_sectors)
 
-    # 3. THE TRIGGER (The button that kicks off the logic)
+    # --- ACTION BUTTON ---
     if st.button("🚀 Find Best Match", type="primary"):
-        # This code only runs when the button is clicked
-        with st.spinner("Finding matches..."):
-            # Pass your inputs into the matching function
-            params = f"Audience: {target_audience}, Sector: {selected_sector}"
-            match = find_matches(new_brief_text, params, budget_value, ideas_df, comps_df)
-            st.session_state.match = match
+        if not new_brief_text:
+            st.warning("Please enter some brief details first!")
+        else:
+            with st.spinner("Our AI Producer is building your proposal..."):
+                params = f"Audience: {target_audience}, Sector: {selected_sector}"
+                match_result = find_matches(new_brief_text, params, budget_value, ideas_df, comps_df)
+                st.session_state.match = match_result
 
-    # 4. RESULTS DISPLAY (Shows up after the button is pressed)
-    if 'match' in st.session_state:
-        display_results(st.session_state.match, ideas_df, comps_df)
+    # --- RESULTS DISPLAY ---
+    if 'match' in st.session_state and st.session_state.match:
+        st.divider()
+        m = st.session_state.match
+        
+        # Get the full Idea details
+        matched_idea = ideas_df[ideas_df['Idea_ID'] == m['matched_idea_id']]
+        
+        if not matched_idea.empty:
+            idea_row = matched_idea.iloc[0]
+            st.header(f"Match: {idea_row['Generic_idea_title']}")
+            st.info(m['reasoning'])
+            
+            st.subheader("🛠️ Recommended Component Build")
+            # Filter components that the AI chose
+            selected_comps = comps_df[comps_df['Component_ID'].isin(m['selected_component_ids'])]
+            
+            for _, c in selected_comps.iterrows():
+                with st.expander(f"**{c['Component_type']}** — €{c['Estimated_Budget']:,}", expanded=True):
+                    st.write(c['Description'])
+            
+            st.metric("Total Proposal Cost", f"€{m['total_cost']:,}", 
+                      delta=f"Remaining Budget: €{budget_value - m['total_cost']:,}")
+        else:
+            st.error("AI matched an ID that doesn't exist in the sheet. Please try again.")
 
 if __name__ == "__main__":
     main()
