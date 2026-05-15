@@ -14,8 +14,19 @@ def load_data(url):
     try:
         response = requests.get(url)
         response.raise_for_status()
-        df = pd.read_csv(io.StringIO(response.text))
-        df.fillna("", inplace=True)
+        
+        # 1. Use 'keep_default_na=False' to prevent Pandas from guessing types too early
+        df = pd.read_csv(io.StringIO(response.text), keep_default_na=False)
+        
+        # 2. Clean Budget Columns (Common culprit for this error)
+        # We look for columns with 'Budget' or 'Cost' in the name
+        for col in df.columns:
+            if 'Budget' in col or 'Cost' in col:
+                # Remove currency symbols, commas, and whitespace
+                df[col] = df[col].astype(str).str.replace(r'[€, ]', '', regex=True)
+                # Convert to numeric, turning errors (like blanks) into 0
+                df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
+        
         return df
     except Exception as e:
         st.error(f"Error loading data: {e}")
