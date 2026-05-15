@@ -37,22 +37,35 @@ def load_live_data(url):
 
 # --- 3. AI PRODUCER LOGIC ---
 def find_matches(brief, profile, budget, ideas_df, comps_df, model_name):
-    """Now takes model_name as an argument for safety."""
-    ideas_lean = ideas_df[['Idea_ID', 'Generic_idea_title', 'Summary']].to_dict('records')
+    # 1. Prepare lean data - including Component_type is key here
+    ideas_lean = ideas_df[['Idea_ID', 'Generic_idea_title', 'Summary', 'Channels']].to_dict('records')
     comps_lean = comps_df[['Component_ID', 'Parent_Idea_ID', 'Component_type', 'Description', 'Estimated_Budget']].to_dict('records')
 
     prompt = f"""
-    Find the best creative idea for this brief: {brief}
-    Budget: €{budget}. Profile: {profile}.
+    You are an expert Media Planner and Creative Producer.
     
-    1. Select the Idea.
-    2. Pick the Components (Parent_Idea_ID) that fit the budget.
+    USER BRIEF: {brief}
+    MEDIA MIX & PROFILE: {profile}
+    MAX BUDGET: €{budget}
+
+    TASK:
+    1. Find the best conceptual match from IDEAS.
+    2. Build a proposal using ONLY components from that Idea that align with the requested Media Mix.
     
+    CHANNEL MAPPING RULES:
+    - If 'Radio' is in the Mix, prioritize 'Radio Commercial Series' or 'Radio' components.
+    - If 'Digital' is in the Mix, include 'Video', 'Social', 'Branded Article', or 'Digital' components.
+    - If 'Video' is in the Mix, include 'Video Series' or 'VOD'.
+    - If 'Print' is in the Mix, include 'Editorial', 'Press', or 'Advertorial'.
+    - If 'Events' is in the Mix, include 'Live Event' or 'Experiential'.
+
+    BUDGET RULE: The sum of 'Estimated_Budget' for selected components MUST be under €{budget}.
+
     RETURN ONLY JSON:
     {{
         "idea_id": "ID",
-        "reason": "Brief explanation...",
-        "selected_components": ["COMP-001"],
+        "reason": "Explain how this concept fits the brief AND how the components satisfy the {profile} media mix requirements...",
+        "selected_components": ["COMP-001", "COMP-002"],
         "total_cost": 50000
     }}
     
@@ -62,14 +75,11 @@ def find_matches(brief, profile, budget, ideas_df, comps_df, model_name):
     
     try:
         model = genai.GenerativeModel(model_name)
-        # We don't use response_mime_type here to ensure compatibility with older 'Pro' models
         response = model.generate_content(prompt)
-        
-        # Clean the text in case the AI wraps it in markdown
         clean_text = response.text.replace("```json", "").replace("```", "").strip()
         return json.loads(clean_text)
     except Exception as e:
-        st.error(f"Model Error ({model_name}): {e}")
+        st.error(f"Logic Error: {e}")
         return None
 
 # --- 4. MAIN UI ---
