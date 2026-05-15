@@ -157,7 +157,8 @@ def main():
         else:
             with st.spinner(f"AI Producer ({selected_model}) is thinking..."):
                 # Updated profile_summary string (no more status)
-                profile_summary = f"Gender: {gender}, Ages: {age_ranges}, Mix: {media_mix}, Days: {duration}"
+                # Update this line inside the 'if st.button' block:
+                profile_summary = f"TARGET AUDIENCE: {gender} {age_ranges}. REQUIRED MEDIA MIX: {media_mix}. DURATION: {duration} days."
                 result = find_matches(new_brief_text, profile_summary, budget_val, ideas_df, comps_df, selected_model)
                 st.session_state.match_result = result
 
