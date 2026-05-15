@@ -99,8 +99,8 @@ def main():
     st.title("💡 Studio Brief Matcher")
     
     # 1. LOAD DATA FIRST (So the dropdowns have something to show)
-    ideas_df = load_live_data(IDEAS_URL)
-    comps_df = load_live_data(COMPONENTS_URL)
+    ideas_df = load_live_data("https://docs.google.com/spreadsheets/d/1_edZXof2yV9D8-luPoodNkfahTyzUE1Dbxg5DU35TSM/edit?gid=1655639181#gid=1655639181")
+    comps_df = load_live_data("https://docs.google.com/spreadsheets/d/1_edZXof2yV9D8-luPoodNkfahTyzUE1Dbxg5DU35TSM/edit?gid=571399293#gid=571399293")
 
     # 2. THE INPUT SECTION (Put it right here)
     st.subheader("Match a New Brief")
