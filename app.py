@@ -88,69 +88,68 @@ def main():
         st.warning("Could not load data from Google Sheets. Check your URLs and 'Publish to Web' settings.")
         return
 
-# --- UPDATED INPUT SECTION ---
-    st.subheader("1. Campaign & Audience Profile")
-    col_a, col_b = st.columns([2, 1])
-    
-    with col_a:
+# --- UI HEADER ---
+    st.title("💡 Studio Brief Matcher")
+    st.info("Input your campaign requirements below to find and scale the perfect creative match from our library.")
+
+    # --- SECTION 1: THE BRIEF (Full Width) ---
+    with st.container(border=True):
+        st.markdown("### 📝 1. The Brief")
         new_brief_text = st.text_area(
-            "Campaign Details / Brief:", 
-            height=150, 
-            placeholder="Paste the core client requirements here...",
-            help="This is the main text the AI will analyze for creative matching."
+            "Campaign Details:", 
+            height=120, 
+            placeholder="e.g., 'Launch a high-impact campaign for a new sustainable fashion line...'",
+            label_visibility="collapsed"
         )
-        
-        # --- Target Audience Categorization ---
-        st.markdown("### Target Audience")
-        inner_col1, inner_col2 = st.columns(2)
-        
-        with inner_col1:
-            gender = st.radio("Gender:", ["Both", "Male", "Female"], horizontal=True)
+
+    # --- SECTION 2: AUDIENCE & LOGISTICS (Two Columns) ---
+    col_left, col_right = st.columns(2)
+
+    with col_left:
+        with st.container(border=True):
+            st.markdown("### 👥 2. Target Audience")
+            
+            # Gender Selection
+            gender = st.radio("Gender focus:", ["Both", "Male", "Female"], horizontal=True)
+            
+            # Age & Status
             age_ranges = st.multiselect(
-                "Age Ranges:", 
-                ["13-17", "18-24", "25-34", "35-44", "45-54", "55-64", "65+"]
+                "Age Brackets:", 
+                ["13-17", "18-24", "25-34", "35-44", "45-54", "55-64", "65+"],
+                placeholder="Select ages..."
             )
             
-        with inner_col2:
             social_status = st.multiselect(
-                "Social Status / Life Stage:",
-                ["Students", "Young Professionals", "Parents", "Middle Management", "Executives", "Retirees", "High Net Worth"]
+                "Life Stage / Status:",
+                ["Students", "Young Professionals", "Parents", "Executives", "Retirees", "High Net Worth"],
+                placeholder="Select status..."
             )
 
-    with col_b:
-        # --- Budget & Media Mix ---
-        st.markdown("### Budget & Media Mix")
-        budget_value = st.slider("Available Budget (€):", 5000, 300000, 50000, step=5000)
-        
-        media_mix = st.multiselect(
-            "Required Media Mix:", 
-            options=["Print", "Digital", "Radio", "Events", "Video", "Social"],
-            default=["Digital", "Social"],
-            help="The AI will prioritize components that match these channels."
-        )
-        
-        duration = st.number_input("Campaign Duration (Days):", 1, 365, 30)
+    with col_right:
+        with st.container(border=True):
+            st.markdown("### 📊 3. Budget & Media Mix")
+            
+            # Budget Slider
+            budget_value = st.slider("Total Budget (€):", 5000, 300000, 50000, step=5000, format="€%d")
+            
+            # New Media Mix (Replaces Sector)
+            media_mix = st.multiselect(
+                "Primary Media Channels:", 
+                options=["Print", "Digital", "Radio", "Events", "Video", "Social"],
+                default=["Digital", "Social"]
+            )
+            
+            duration = st.number_input("Campaign Duration (Days):", 1, 365, 30)
 
-    # --- UPDATED ACTION BUTTON ---
-    if st.button("🚀 Find Best Match", type="primary", use_container_width=True):
+    # --- ACTION BUTTON ---
+    st.markdown("<br>", unsafe_errors=True) # Spacer
+    if st.button("🚀 GENERATE MATCHED PROPOSAL", type="primary", use_container_width=True):
         if not new_brief_text:
-            st.warning("Please enter some campaign details first!")
+            st.error("Please provide campaign details to proceed.")
         else:
-            with st.spinner("Analyzing audience profile and media mix..."):
-                # We package all these new inputs into a string for the AI to read
-                params = f"""
-                AUDIENCE PROFILE:
-                - Gender: {gender}
-                - Ages: {', '.join(age_ranges)}
-                - Status: {', '.join(social_status)}
-                
-                MEDIA MIX REQUIREMENTS:
-                - Channels: {', '.join(media_mix)}
-                - Duration: {duration} days
-                """
-                
-                match_result = find_matches(new_brief_text, params, budget_value, ideas_df, comps_df)
-                st.session_state.match = match_result
+            # Packaging the prompt data
+            params = f"Audience: {gender}, {age_ranges}, {social_status}. Mix: {media_mix}. Time: {duration} days."
+            # ... call matching logic ...
 
     # --- RESULTS DISPLAY ---
     if 'match' in st.session_state and st.session_state.match:
