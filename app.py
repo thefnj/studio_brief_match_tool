@@ -90,7 +90,7 @@ def main():
         with st.container(border=True):
             st.markdown("#### 👥 2. Target Audience")
             gender = st.radio("Gender Focus:", ["Both", "Male", "Female"], horizontal=True)
-            age_ranges = st.multiselect("Age Ranges:", ["13-17", "18-24", "25-34", "35-44", "45-54", "55-64", "65+"])
+            age_ranges = st.multiselect("Age Ranges:", ["18-24", "25-34", "35-44", "45-54", "55-64", "65+"])
             social_status = st.multiselect("Social Status / Life Stage:", ["Students", "Young Professionals", "Parents", "Executives", "Retirees"])
 
     with col_right:
