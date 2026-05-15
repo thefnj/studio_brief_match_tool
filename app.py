@@ -88,30 +88,67 @@ def main():
         st.warning("Could not load data from Google Sheets. Check your URLs and 'Publish to Web' settings.")
         return
 
-    # --- INPUT SECTION ---
-    st.subheader("1. Campaign Details")
+# --- UPDATED INPUT SECTION ---
+    st.subheader("1. Campaign & Audience Profile")
     col_a, col_b = st.columns([2, 1])
     
     with col_a:
-        new_brief_text = st.text_area("Paste Brief Details:", height=150, placeholder="Describe the goal...")
+        new_brief_text = st.text_area(
+            "Campaign Details / Brief:", 
+            height=150, 
+            placeholder="Paste the core client requirements here...",
+            help="This is the main text the AI will analyze for creative matching."
+        )
         
-        # Dynamic Multi-select for Audiences
-        available_audiences = sorted(ideas_df['Target_audience'].unique().tolist())
-        target_audience = st.multiselect("Select Target Audience(s):", options=available_audiences)
+        # --- Target Audience Categorization ---
+        st.markdown("### Target Audience")
+        inner_col1, inner_col2 = st.columns(2)
+        
+        with inner_col1:
+            gender = st.radio("Gender:", ["Both", "Male", "Female"], horizontal=True)
+            age_ranges = st.multiselect(
+                "Age Ranges:", 
+                ["13-17", "18-24", "25-34", "35-44", "45-54", "55-64", "65+"]
+            )
+            
+        with inner_col2:
+            social_status = st.multiselect(
+                "Social Status / Life Stage:",
+                ["Students", "Young Professionals", "Parents", "Middle Management", "Executives", "Retirees", "High Net Worth"]
+            )
 
     with col_b:
-        budget_value = st.slider("Target Budget (€):", 5000, 300000, 50000, step=5000)
+        # --- Budget & Media Mix ---
+        st.markdown("### Budget & Media Mix")
+        budget_value = st.slider("Available Budget (€):", 5000, 300000, 50000, step=5000)
         
-        available_sectors = sorted(ideas_df['Original_sector'].unique().tolist())
-        selected_sector = st.selectbox("Primary Sector:", ["All Sectors"] + available_sectors)
+        media_mix = st.multiselect(
+            "Required Media Mix:", 
+            options=["Print", "Digital", "Radio", "Events", "Video", "Social"],
+            default=["Digital", "Social"],
+            help="The AI will prioritize components that match these channels."
+        )
+        
+        duration = st.number_input("Campaign Duration (Days):", 1, 365, 30)
 
-    # --- ACTION BUTTON ---
-    if st.button("🚀 Find Best Match", type="primary"):
+    # --- UPDATED ACTION BUTTON ---
+    if st.button("🚀 Find Best Match", type="primary", use_container_width=True):
         if not new_brief_text:
-            st.warning("Please enter some brief details first!")
+            st.warning("Please enter some campaign details first!")
         else:
-            with st.spinner("Our AI Producer is building your proposal..."):
-                params = f"Audience: {target_audience}, Sector: {selected_sector}"
+            with st.spinner("Analyzing audience profile and media mix..."):
+                # We package all these new inputs into a string for the AI to read
+                params = f"""
+                AUDIENCE PROFILE:
+                - Gender: {gender}
+                - Ages: {', '.join(age_ranges)}
+                - Status: {', '.join(social_status)}
+                
+                MEDIA MIX REQUIREMENTS:
+                - Channels: {', '.join(media_mix)}
+                - Duration: {duration} days
+                """
+                
                 match_result = find_matches(new_brief_text, params, budget_value, ideas_df, comps_df)
                 st.session_state.match = match_result
 
