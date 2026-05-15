@@ -15,7 +15,8 @@ except KeyError:
     st.error("Gemini API key missing in Secrets.")
     st.stop()
 
-# --- 2. DATA SOURCE (Publish to Web CSV Links) ---
+# --- 2. DATA SOURCE ---
+# Using your specific GIDs from your last message
 IDEAS_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRfIYgDs8lnWvKyYR_o7d00KcRdk-Hy1oeOYwYVd5ShDGGBPEO4wcP5ZzQI3ZSX-4j4g1NL1s9fnA-E/pub?gid=1655639181&single=true&output=csv"
 COMPONENTS_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRfIYgDs8lnWvKyYR_o7d00KcRdk-Hy1oeOYwYVd5ShDGGBPEO4wcP5ZzQI3ZSX-4j4g1NL1s9fnA-E/pub?gid=571399293&single=true&output=csv"
 
@@ -35,50 +36,42 @@ def load_live_data(url):
         return pd.DataFrame()
 
 # --- 3. AI PRODUCER LOGIC ---
-def find_matches(brief, profile, budget, ideas_df, comps_df):
-    # 1. DISCOVER MODELS: Let the code find what is available for YOUR key
-    try:
-        available_models = [m.name for m in genai.list_models()]
-        
-        # Priority list: Best to oldest
-        if any("gemini-1.5-flash" in m for m in available_models):
-            target_model = "models/gemini-1.5-flash"
-        elif any("gemini-1.5-pro" in m for m in available_models):
-            target_model = "models/gemini-1.5-pro"
-        else:
-            target_model = "models/gemini-pro" # The universal fallback
-            
-    except Exception as e:
-        st.error(f"Discovery failed: {e}")
-        target_model = "models/gemini-pro"
-
-    # 2. PREPARE THE DATA
+def find_matches(brief, profile, budget, ideas_df, comps_df, model_name):
+    """Now takes model_name as an argument for safety."""
     ideas_lean = ideas_df[['Idea_ID', 'Generic_idea_title', 'Summary']].to_dict('records')
-    
+    comps_lean = comps_df[['Component_ID', 'Parent_Idea_ID', 'Component_type', 'Description', 'Estimated_Budget']].to_dict('records')
+
     prompt = f"""
-    Find the best idea from this list for this brief: {brief}.
+    Find the best creative idea for this brief: {brief}
     Budget: €{budget}. Profile: {profile}.
     
-    RETURN ONLY JSON with keys: "idea_id", "reason", "selected_components", "total_cost".
+    1. Select the Idea.
+    2. Pick the Components (Parent_Idea_ID) that fit the budget.
+    
+    RETURN ONLY JSON:
+    {{
+        "idea_id": "ID",
+        "reason": "Brief explanation...",
+        "selected_components": ["COMP-001"],
+        "total_cost": 50000
+    }}
     
     IDEAS: {json.dumps(ideas_lean)}
+    COMPONENTS: {json.dumps(comps_lean)}
     """
     
-    # 3. CALL THE MODEL (Safe for 1.0 and 1.5)
-    model = genai.GenerativeModel(target_model)
-    
-    # We remove 'response_mime_type' here because gemini-pro (1.0) doesn't support it
-    # We will handle the JSON cleaning manually to be safe
-    response = model.generate_content(prompt)
-    
     try:
-        # Clean the text in case the AI wraps it in markdown like ```json
+        model = genai.GenerativeModel(model_name)
+        # We don't use response_mime_type here to ensure compatibility with older 'Pro' models
+        response = model.generate_content(prompt)
+        
+        # Clean the text in case the AI wraps it in markdown
         clean_text = response.text.replace("```json", "").replace("```", "").strip()
         return json.loads(clean_text)
     except Exception as e:
-        st.error(f"Parsing failed. AI returned: {response.text}")
+        st.error(f"Model Error ({model_name}): {e}")
         return None
-        
+
 # --- 4. MAIN UI ---
 def main():
     st.title("💡 Studio Brief Matcher")
@@ -86,6 +79,26 @@ def main():
     # Pre-load data
     ideas_df = load_live_data(IDEAS_URL)
     comps_df = load_live_data(COMPONENTS_URL)
+
+    # --- MODEL SELECTOR SIDEBAR (The Safety Net) ---
+    with st.sidebar:
+        st.header("⚙️ Model Settings")
+        try:
+            # Dynamically fetch every model your key is allowed to use
+            all_models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
+            
+            # Select 2.5 Flash if it exists, otherwise 1.5, otherwise first in list
+            default_idx = 0
+            for i, m in enumerate(all_models):
+                if "gemini-2.5-flash" in m: default_idx = i; break
+                elif "gemini-1.5-flash" in m: default_idx = i; break
+
+            selected_model = st.selectbox("Select Active AI Model:", all_models, index=default_idx)
+            st.success(f"Using: {selected_model}")
+            
+        except Exception as e:
+            st.error(f"Could not list models: {e}")
+            selected_model = "models/gemini-pro" # Hard fallback
 
     if ideas_df.empty or comps_df.empty:
         st.error("Database connection failed. Please check Google Sheet 'Publish to Web' settings.")
@@ -97,13 +110,12 @@ def main():
         new_brief_text = st.text_area("What is the client looking for?", height=100, label_visibility="collapsed")
 
     col_left, col_right = st.columns(2)
-
     with col_left:
         with st.container(border=True):
             st.markdown("#### 👥 2. Target Audience")
             gender = st.radio("Gender Focus:", ["Both", "Male", "Female"], horizontal=True)
             age_ranges = st.multiselect("Age Ranges:", ["18-24", "25-34", "35-44", "45-54", "55-64", "65+"])
-            social_status = st.multiselect("Social Status / Life Stage:", ["Students", "Young Professionals", "Parents", "Executives", "Retirees"])
+            social_status = st.multiselect("Status:", ["Students", "Young Professionals", "Parents", "Executives", "Retirees"])
 
     with col_right:
         with st.container(border=True):
@@ -118,32 +130,36 @@ def main():
         if not new_brief_text:
             st.warning("Please provide a brief description.")
         else:
-            with st.spinner("Producer is building your custom package..."):
+            with st.spinner(f"AI Producer ({selected_model}) is thinking..."):
                 profile_summary = f"Gender: {gender}, Ages: {age_ranges}, Status: {social_status}, Mix: {media_mix}, Days: {duration}"
-                result = find_matches(new_brief_text, profile_summary, budget_val, ideas_df, comps_df)
+                result = find_matches(new_brief_text, profile_summary, budget_val, ideas_df, comps_df, selected_model)
                 st.session_state.match_result = result
 
     # --- RESULTS DISPLAY ---
-    if 'match_result' in st.session_state:
+    if 'match_result' in st.session_state and st.session_state.match_result:
         res = st.session_state.match_result
-        idea = ideas_df[ideas_df['Idea_ID'] == res['idea_id']].iloc[0]
+        # Logic to find the matched idea
+        matched_idea_df = ideas_df[ideas_df['Idea_ID'] == res['idea_id']]
         
-        st.header(f"Match: {idea['Generic_idea_title']}")
-        st.info(res['reason'])
-        
-        st.subheader("🛠️ Recommended Component Build")
-        selected_comps = comps_df[comps_df['Component_ID'].isin(res['selected_components'])]
-        
-        # Display as cards
-        for _, c in selected_comps.iterrows():
-            with st.container(border=True):
-                c1, c2 = st.columns([4, 1])
-                c1.markdown(f"**{c['Component_type']}**")
-                c1.write(c['Description'])
-                c2.markdown(f"### €{c['Estimated_Budget']:,}")
-        
-        st.divider()
-        st.metric("Total Proposal Value", f"€{res['total_cost']:,}", delta=f"€{budget_val - res['total_cost']:,} under budget")
+        if not matched_idea_df.empty:
+            idea = matched_idea_df.iloc[0]
+            st.header(f"Match: {idea['Generic_idea_title']}")
+            st.info(res['reason'])
+            
+            st.subheader("🛠️ Recommended Component Build")
+            selected_comps = comps_df[comps_df['Component_ID'].isin(res['selected_components'])]
+            
+            for _, c in selected_comps.iterrows():
+                with st.container(border=True):
+                    c1, c2 = st.columns([4, 1])
+                    c1.markdown(f"**{c['Component_type']}**")
+                    c1.write(c['Description'])
+                    c2.markdown(f"### €{c['Estimated_Budget']:,}")
+            
+            st.divider()
+            st.metric("Total Proposal Value", f"€{res['total_cost']:,}", delta=f"€{budget_val - res['total_cost']:,} under budget")
+        else:
+            st.error(f"AI matched ID '{res['idea_id']}' which was not found in your Ideas sheet.")
 
 if __name__ == "__main__":
     main()
