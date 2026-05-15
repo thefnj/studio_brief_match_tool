@@ -63,7 +63,7 @@ def find_matches(brief, profile, budget, ideas_df, comps_df):
         "total_cost": 45000
     }}
     """
-    model = genai.GenerativeModel("gemini-1.5-flash")
+    model = genai.GenerativeModel("models/gemini-1.5-flash")
     response = model.generate_content(prompt, generation_config={"response_mime_type": "application/json"})
     return json.loads(response.text)
 
